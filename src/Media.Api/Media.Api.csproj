@@ -17,4 +17,8 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Media.Contracts\Media.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>
