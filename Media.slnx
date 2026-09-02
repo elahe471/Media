@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Media.Api/Media.Api.csproj" Id="e24a5a39-bad8-4299-97a6-888506c31bb6" />
+    <Project Path="src/Media.Contracts/Media.Contracts.csproj" Id="bd4714e5-b5cc-415e-a245-9f96b72b8543" />
   </Folder>
 </Solution>

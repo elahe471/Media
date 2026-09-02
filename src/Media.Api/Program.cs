@@ -1,13 +1,17 @@
-using Media.Api.Infrastructure.Extensions;
-using Minio;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.AddApplicationServices();
 builder.Services.AddOpenApi();
-
+builder.AddApplicationValidation();
 builder.AddMinIO();
 
+builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI();
 
 if (app.Environment.IsDevelopment())
 {
@@ -15,16 +19,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.MapGroup("/api/v1/Media")
+   .WithTags("Media APIs")
+   .MapMediaEndpoints();
 
-app.MapGet("/", async (IMinioClient minioClient) =>
-{
-    var result = await minioClient.ListBucketsAsync();
-
-    var bucketNames = result.Buckets
-        .Select(x => x.Name)
-        .ToList();
-
-    return Results.Ok(bucketNames);
-});
 
 app.Run();
