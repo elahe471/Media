@@ -4,6 +4,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddApplicationServices();
 builder.Services.AddOpenApi();
 builder.AddApplicationValidation();
+builder.AddApplicationLogging();
 builder.AddMinIO();
 builder.Services.AddCors(options =>
 {
@@ -31,6 +32,7 @@ app.UseHttpsRedirection();
 app.MapGroup("/api/v1/Media")
    .WithTags("Media APIs")
    .MapMediaEndpoints();
+
 
 
 app.Run();

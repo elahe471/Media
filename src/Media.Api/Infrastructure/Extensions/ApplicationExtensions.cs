@@ -35,8 +35,8 @@ namespace Media.Api.Infrastructure.Extensions
 
             builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
 
-            builder.Services.AddOptions<MediaOptions>()
-                     .BindConfiguration(nameof(MediaOptions));
+            builder.Services.Configure<AppSettings>(
+              builder.Configuration);
 
         }
     }

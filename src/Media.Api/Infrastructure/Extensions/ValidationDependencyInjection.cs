@@ -1,6 +1,4 @@
 ﻿
-
-
 namespace Media.Api.Infrastructure.Extensions;
 
 public static class ValidationDependencyInjection
