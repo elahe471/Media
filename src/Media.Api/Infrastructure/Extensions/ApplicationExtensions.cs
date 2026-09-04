@@ -1,5 +1,4 @@
-﻿using MassTransit;
-using System.Reflection;
+﻿
 
 namespace Media.Api.Infrastructure.Extensions
 {
@@ -7,7 +6,10 @@ namespace Media.Api.Infrastructure.Extensions
     {
         public static void AddApplicationServices(this IHostApplicationBuilder builder)
         {
-          
+            builder.Services.AddDbContext<MediaDbContext>(configure =>
+            {
+                configure.UseInMemoryDatabase("MediaDb");
+            });
 
             builder.Services.AddMassTransit(configure =>
             {
@@ -32,8 +34,10 @@ namespace Media.Api.Infrastructure.Extensions
             });
 
             builder.Services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
-            //builder.Services.AddOptions<CatalogOptions>()
-            //                .BindConfiguration(nameof(CatalogOptions));
+
+            builder.Services.AddOptions<MediaOptions>()
+                     .BindConfiguration(nameof(MediaOptions));
+
         }
     }
 }

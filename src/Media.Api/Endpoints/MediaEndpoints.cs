@@ -1,6 +1,8 @@
 ﻿
 
 using MassTransit;
+using Media.Contracts.IntegrationEvents;
+using Microsoft.Extensions.Options;
 using Minio.DataModel.Args;
 
 namespace Media.Api.Endpoints;
@@ -13,6 +15,8 @@ public static class MediaEndpoints
         app.MapPost("/{bucketName}/{CatalogId}", Upload)
             .DisableAntiforgery();
 
+        app.MapGet("{tokenId:guid:required}", GetImageByToken);
+
         return app;
     }
 
@@ -21,8 +25,10 @@ public static class MediaEndpoints
         string CatalogId,
         IFormFile file,
         IValidator<UploadMediaRequest> validator,
+          MediaDbContext dbContext,
         IMinioClient minioClient,
-        IPublishEndpoint publish,
+        IPublishEndpoint publisher,
+        IOptions<MediaOptions> mediaOptions,
         CancellationToken cancellationToken)
     {
         var request = new UploadMediaRequest(
@@ -51,21 +57,31 @@ public static class MediaEndpoints
                                             .WithContentType(file.ContentType)
                                             .WithObjectSize(file.Length)
                                             .WithStreamData(file.OpenReadStream());
-        await minioClient.PutObjectAsync(putObjArg);
+    
 
 
-        var statObjArg = new StatObjectArgs().WithBucket(bucketName)
-                                            .WithObject(file.FileName);
 
       
         try
         {
-            var objStatus = await minioClient.StatObjectAsync(statObjArg);
-            publish.Publish(new Media.Contracts.IntegrationEvents.MediaUploadedEvent(
-                file.FileName,
-                $"https://{minioClient.Endpoint}/{bucketName}/{file.FileName}",
-                bucketName,
-                objStatus.LastModified), cancellationToken);
+
+            var token = new UrlToken
+            {
+                BucketName = bucketName,
+                ObjectName = file.FileName,
+                ContentType = file.ContentType,
+                ExpireOn = DateTime.UtcNow.AddMinutes(10),
+                Id = Guid.NewGuid()
+            };
+            dbContext.Tokens.Add(token);
+            await dbContext.SaveChangesAsync();
+
+            await minioClient.PutObjectAsync(putObjArg);
+
+            var url = $"{mediaOptions.Value.CatalogBaseUrl}/{token.Id}";
+            await publisher.Publish(new MediaUploadedEvent(file.FileName, url, CatalogId, DateTime.UtcNow), cancellationToken);
+          
+            
         }
         catch (Exception)
         {
@@ -75,4 +91,31 @@ public static class MediaEndpoints
 
         return Results.Ok();
     }
+
+   public static async Task<IResult> GetImageByToken(
+        Guid tokenId,
+        MediaDbContext dbContext,
+        IMinioClient minioClient,
+        CancellationToken cancellationToken, HttpContext httpContext)
+    {
+        var token = await dbContext.Tokens.FindAsync(new object[] { tokenId }, cancellationToken);
+        if (token == null )
+        {
+            return Results.NotFound();
+        }
+        var getObjArgs = new GetObjectArgs()
+            .WithBucket(token.BucketName)
+            .WithObject(token.ObjectName).WithCallbackStream(async (stream, cancellationToken) =>
+            {
+                httpContext.Response.ContentType = token.ContentType;
+                await stream.CopyToAsync(httpContext.Response.Body, cancellationToken);
+            });
+        token.CountAccess++;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var stream = await minioClient.GetObjectAsync(getObjArgs, cancellationToken);
+      
+
+        return Results.Empty;
+    }       
 }

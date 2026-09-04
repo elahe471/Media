@@ -2,6 +2,7 @@
 {
     public class MediaOptions
     {
+        public string CatalogBaseUrl { get; set; }
     }
 
     public sealed class BrokerOptions
