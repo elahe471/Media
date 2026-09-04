@@ -45,9 +45,9 @@ public static class ElasticSearchDependencyInjection
                                     context.HostingEnvironment
                                         .EnvironmentName
                                         .ToLowerInvariant());
-
+                            // Elasticsearch failure must NOT stop Media.Api
                             options.BootstrapMethod =
-                                BootstrapMethod.Failure;
+                                BootstrapMethod.Silent;
                         },
                         transport =>
                         {

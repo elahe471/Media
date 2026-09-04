@@ -19,6 +19,7 @@ public sealed class ElasticSearchOptions
 public class MediaOptions
 {
     public string CatalogBaseUrl { get; set; }
+    public required string PublicBaseUrl { get; init; }
 }
 
 public sealed class BrokerOptions

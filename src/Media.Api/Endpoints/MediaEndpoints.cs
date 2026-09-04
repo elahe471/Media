@@ -11,15 +11,143 @@ public static class MediaEndpoints
     public static IEndpointRouteBuilder MapMediaEndpoints(
         this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{bucketName}/{catalogId}", Upload)
+        app.MapPost("/public/{bucketName}/{catalogId}", UploadPublic)
+            .DisableAntiforgery();
+
+        app.MapPost("/private/{bucketName}/{catalogId}", UploadPrivate)
             .DisableAntiforgery();
 
         app.MapGet("/{tokenId:guid}", GetImageByToken);
 
         return app;
     }
+    public static async Task<IResult> UploadPublic(
+    string bucketName,
+    string catalogId,
+    IFormFile file,
+    IValidator<UploadMediaRequest> validator,
+    IMinioClient minioClient,
+    IPublishEndpoint publisher,
+    IOptions<AppSettings> appSettings,
+    ILoggerFactory loggerFactory,
+    CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("PublicMediaUpload");
 
-    public static async Task<IResult> Upload(
+        // 1. Validation
+
+        var request = new UploadMediaRequest(
+            bucketName,
+            file);
+
+        var validationResult =
+            await validator.ValidateAsync(
+                request,
+                cancellationToken);
+
+        if (!validationResult.IsValid)
+        {
+            return Results.ValidationProblem(
+                validationResult.Errors
+                    .GroupBy(x => x.PropertyName)
+                    .ToDictionary(
+                        x => x.Key,
+                        x => x
+                            .Select(error => error.ErrorMessage)
+                            .ToArray()));
+        }
+
+        // 2. Generate unique Object Key
+
+        var extension = Path.GetExtension(file.FileName);
+
+        var objectName =
+            $"{catalogId}/{Guid.NewGuid():N}{extension}";
+
+        // 3. Upload to MinIO
+
+        try
+        {
+            await using var fileStream =
+                file.OpenReadStream();
+
+            var putObjectArgs = new PutObjectArgs()
+                .WithBucket(bucketName)
+                .WithObject(objectName)
+                .WithContentType(file.ContentType)
+                .WithObjectSize(file.Length)
+                .WithStreamData(fileStream);
+
+            await minioClient.PutObjectAsync(
+                putObjectArgs,
+                cancellationToken);
+        }
+        catch (MinioException ex)
+        {
+            logger.LogError(
+                ex,
+                "Failed to upload public media {ObjectName} to bucket {BucketName}.",
+                objectName,
+                bucketName);
+
+            return Results.Problem(
+                title: "Object storage error",
+                detail: "The media file could not be stored.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
+        // 4. Generate permanent public URL
+
+        var publicBaseUrl =
+            appSettings.Value.MediaOptions.PublicBaseUrl
+                .TrimEnd('/');
+
+        var url =
+            $"{publicBaseUrl}/{bucketName}/{objectName}";
+
+        // 5. Publish Integration Event
+
+        try
+        {
+            await publisher.Publish(
+                new MediaUploadedEvent(
+                    file.FileName,
+                    url,
+                    catalogId,
+                    DateTime.UtcNow),
+                cancellationToken);
+        }
+        catch (MassTransitException ex)
+        {
+            logger.LogError(
+                ex,
+                "Public media was uploaded but MediaUploadedEvent could not be published. ObjectName: {ObjectName}",
+                objectName);
+
+            // Prevent an orphan object
+            await TryRemoveObject(
+                minioClient,
+                bucketName,
+                objectName,
+                logger,
+                cancellationToken);
+
+            return Results.Problem(
+                title: "Message broker error",
+                detail: "The media was uploaded, but the catalog could not be notified.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        // 6. Success
+
+        return Results.Ok(new
+        {
+            FileName = file.FileName,
+            ObjectName = objectName,
+            Url = url
+        });
+    }
+    public static async Task<IResult> UploadPrivate(
         string bucketName,
         string catalogId,
         IFormFile file,
